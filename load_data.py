@@ -61,13 +61,15 @@ def image_from_index(idx, df, path):
     img = Image.open(path + filename)
     return img
 
-def augment(img):
+def augment(img, aug_likelihood=.1):
     """applies a series of augmentations to 
     input image and returns.
     """
     #small chance for zero augmentation.
-    if random.random() < .1:
+    if random.random() < aug_likelihood:
         return img
+    else:
+        print('augmenting!')
     #Apply random skew to img
     skew = Augmentor.Operations.Skew(1, 'RANDOM', .5)
     res = skew.perform_operation([img])
