@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import random
+from keras.models import load_model
 
 def load_directory(directory):
     """Loads image files from the directory in
@@ -61,15 +62,14 @@ def image_from_index(idx, df, path):
     img = Image.open(path + filename)
     return img
 
-def augment(img, aug_likelihood=.1):
+def augment(img, aug_mask=9000, augmentation_rate=1):
     """applies a series of augmentations to 
     input image and returns.
     """
     #small chance for zero augmentation.
-    if random.random() < aug_likelihood:
+    likelihood = 1-(augmentation_rate*aug_mask/10000)
+    if random.random() < likelihood:
         return img
-    else:
-        print('augmenting!')
     #Apply random skew to img
     skew = Augmentor.Operations.Skew(1, 'RANDOM', .5)
     res = skew.perform_operation([img])
@@ -83,9 +83,11 @@ def augment(img, aug_likelihood=.1):
     img = res[0]
     return img
 
-def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True):
+def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True, augmentation_rate=1):
     """Produces a random batch of training examples."""
+    count = 0
     while True:
+        count += 1
         batch = []
         labels = []
         while len(batch) < batch_size:
@@ -94,7 +96,7 @@ def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True):
             img = image_from_index(idx, df, path)
             #augment image
             if augmentation:
-                img = augment(img)
+                img = augment(img, aug_mask=count, augmentation_rate=augmentation_rate)
             tensor = as_tensor(img)
             batch.append(tensor)
             #create one-hot encoded label vector
@@ -107,9 +109,10 @@ def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True):
         Y = np.array(labels)
         yield X, Y
 
-def val_gen(df, labels, path='./eval/'):
+def val_gen(df, labels, batch_size=None, path='./eval/'):
     """Produces a random batch of training examples."""
-    batch_size = len(labels)*19
+    if batch_size==None:
+        batch_size = len(labels)*19
     start_batch = 0
     end_batch = start_batch + batch_size
     while True:
@@ -216,3 +219,22 @@ def quiz(model, df, labels, path='./eval/', verbose=1):
              )
     return correct, total, classified, total_classified
 
+def quiz_models(directory, test, labels, capsnet=False):
+    """Loads models from directory and runs the quiz on them."""
+    model_directory = './models' + directory[1:]
+    print('\nquizzing best accuracy model...\n')
+    best_acc = load_model(model_directory + 'best_acc.h5')
+    if capsnet:
+        best_acc = load_model(model_directory + 'best_acc_caps.h5')
+    results1 = quiz(best_acc, test, labels)
+    print('\nquizzing best loss model...\n')
+    best_loss = load_model(model_directory + 'best_loss.h5')
+    if capsnet:
+        best_acc = load_model(model_directory + 'best_loss_caps.h5')
+    results2 = quiz(best_loss, test, labels)
+    print('\nquizzing best overfit model...\n')
+    overfit = load_model(model_directory + 'overfit.h5')
+    if capsnet:
+        best_acc = load_model(model_directory + 'overfit_caps.h5')
+    results3 = quiz(overfit, test, labels)
+    return results1, results2, results3

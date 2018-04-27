@@ -5,46 +5,79 @@ from capsulenet import CapsNet, margin_loss
 from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
 from keras.layers import Input, Conv2D, MaxPooling2D, BatchNormalization, Dropout, Dense, Reshape, Add, Flatten
 from keras.models import Model, Sequential, load_model
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler
+from keras.optimizers import Adam, SGD
 
-def make_convnet(input_shape, n_class, width=2):
+def make_convnet(input_shape, n_class, width=2, dropout=.2):
     """Builds a classic CNN model. width adjusts layer width
     for easy adjustment of total number of parameters.
     Returns a compiled model."""
     inputs = Input(shape=input_shape)
     x = Conv2D(filters=1*width, kernel_size=9, padding='valid', activation='relu', name='conv1')(inputs)
     x = Conv2D(filters=2*width, kernel_size=5, padding='valid', activation='relu', name='conv2')(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2,2), name='maxp1')(x)
     x = Conv2D(filters=2*width, kernel_size=2, padding='valid', activation='relu', name='conv3')(x)
     x = Conv2D(filters=4*width, kernel_size=2, padding='valid', activation='relu', name='conv4')(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2,2), name='maxp2')(x)
     x = Conv2D(filters=4*width, kernel_size=2, padding='valid', activation='relu', name='conv5')(x)
     x = Conv2D(filters=8*width, kernel_size=2, padding='valid', activation='relu', name='conv6')(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2,2), name='maxp3')(x)
     x = Conv2D(filters=8*width, kernel_size=2, padding='valid', activation='relu', name='conv7')(x)
     x = Conv2D(filters=16*width, kernel_size=2, padding='valid', activation='relu', name='conv8')(x)
+    x = Dropout(dropout)(x)
     x = MaxPooling2D((2,2), name='maxp4')(x)
     x = Conv2D(filters=16*width, kernel_size=2, padding='valid', activation='relu', name='conv9')(x)
     x = Conv2D(filters=32*width, kernel_size=2, padding='valid', activation='relu', name='conv10')(x)
     x = Conv2D(filters=37*width, kernel_size=2, padding='valid', activation='relu', name='conv11')(x)
     x = Flatten()(x)
-    #x = Dropout(.5)(x)
+    x = Dropout(dropout)(x)
     x = Dense(64*width, activation='relu')(x)
-    #x = Dropout(.5)(x)
+    x = Dropout(dropout)(x)
     x = Dense(16*width, activation='relu')(x)
-    #x = Dropout(.5)(x)
+    x = Dropout(dropout)(x)
     x = Dense(8*width, activation='relu')(x)
-    #x = Dropout(.5)(x)
+    x = Dropout(dropout)(x)
     x = Dense(n_class, activation='softmax')(x)
 
 
     model = Model(inputs=inputs, outputs=x)
     model.compile(
         loss='categorical_crossentropy',
-        optimizer='sgd',
-        metrics=['accuracy']
+        optimizer=SGD(decay=.001),
+        metrics=['categorical_accuracy']
     )
     return model
+
+def train_convnet(model, train_generator, val_generator, directory, verbose=False):
+    """Trains models for 100 epochs. Saves best validation accuracy,
+    best validation loss, and final "overfit" model, into:
+    ./models/ + directory + 'best_acc.h5', 'best_loss.h5',
+    'overfit.h5'
+    """
+    save_path = './models' + directory[1:]
+    os.system('mkdir models')
+    os.system('mkdir {}'.format('/'.join(save_path.split('/')[:3])))
+    os.system('mkdir {}'.format('/'.join(save_path.split('/')[:4])))
+    callbacks = []
+    acc_ = ModelCheckpoint(save_path + 'best_acc.h5', monitor='val_categorical_accuracy', save_best_only=True, verbose=verbose)
+    callbacks.append(acc_)
+    loss_ = ModelCheckpoint(save_path + 'best_loss.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
+    callbacks.append(loss_)
+    history = model.fit_generator(
+        train_generator,
+        steps_per_epoch = 100,
+        epochs=200,
+        validation_data = val_generator,
+        validation_steps = 1,
+        callbacks = callbacks, 
+        verbose=verbose
+    )
+    model.save(save_path + 'overfit.h5')
+    return history
+
 
 def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
     """
@@ -92,14 +125,17 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
     manipulate_model = Model([x, y, noise], decoder(masked_noised_y))
     #train_model, eval_model, manipulate_model
 
-    train_model.compile(optimizer='adam',
+    train_model.compile(optimizer=Adam(lr=.001),
                   loss=[margin_loss, 'mse'],
                   loss_weights=[1., reconstruction_loss],
-                  metrics={'capsnet': 'accuracy'})
+                  metrics={'capsnet': 'accuracy'}
+                       )
+
+    
     
     return train_model, eval_model, manipulate_model
 
-def train_model(model, train_generator, val_generator, directory, verbose=False):
+def train_capsnet(model, train_generator, val_generator, directory, verbose=False, lr=.001, lr_decay=.9):
     """Trains models for 100 epochs. Saves best validation accuracy,
     best validation loss, and final "overfit" model, into:
     ./models/ + directory + 'best_acc.h5', 'best_loss.h5',
@@ -110,25 +146,44 @@ def train_model(model, train_generator, val_generator, directory, verbose=False)
     os.system('mkdir {}'.format('/'.join(save_path.split('/')[:3])))
     os.system('mkdir {}'.format('/'.join(save_path.split('/')[:4])))
     callbacks = []
-    acc_ = ModelCheckpoint(save_path + 'best_acc.h5', monitor='val_acc', save_best_only=True, verbose=verbose)
+    acc_ = ModelCheckpoint(save_path + 'best_acc_caps.h5', monitor='val_capsnet_acc', save_best_only=True, verbose=verbose)
     callbacks.append(acc_)
-    loss_ = ModelCheckpoint(save_path + 'best_loss.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
+    loss_ = ModelCheckpoint(save_path + 'best_loss_caps.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
     callbacks.append(loss_)
+    lr_ = LearningRateScheduler(schedule=lambda epoch: lr * (lr_decay ** epoch))
+    callbacks.append(lr_)
+    
+    def caps_tg(gen=train_generator):
+        while True:
+            X, Y = next(gen)
+            yield ([X, Y], [Y, X])
+
+    ctg = caps_tg(train_generator)
+
+    def caps_vg(gen=val_generator):
+        while True:
+            X, Y = next(gen)
+            yield ([X, Y], [Y, X])
+
+    cvg = caps_vg(val_generator)
+    
     history = model.fit_generator(
-        train_generator,
+        ctg,
         steps_per_epoch = 100,
         epochs=100,
-        validation_data = val_generator,
-        validation_steps = 1,
+        validation_data = cvg,
+        validation_steps = 19,
         callbacks = callbacks, 
         verbose=verbose
     )
+    model.save('overfit_caps.h5')
     return history
+
 
 def plot_history(history, model_name='model'):
     """Takes a history object and makes some plots."""
-    plt.plot(history.history['acc']);
-    plt.plot(history.history['val_acc']);
+    plt.plot(history.history['categorical_accuracy']);
+    plt.plot(history.history['val_categorical_accuracy']);
     plt.title('{} accuracy'.format(model_name));
     plt.ylabel('accuracy');
     plt.xlabel('epoch');
