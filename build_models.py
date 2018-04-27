@@ -5,8 +5,16 @@ from capsulenet import CapsNet, margin_loss
 from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
 from keras.layers import Input, Conv2D, MaxPooling2D, BatchNormalization, Dropout, Dense, Reshape, Add, Flatten
 from keras.models import Model, Sequential, load_model
-from keras.callbacks import ModelCheckpoint, LearningRateScheduler
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback
 from keras.optimizers import Adam, SGD
+
+class LossLogger(Callback):
+    def __init__(self, logger):
+        """Give it a logger"""
+        self.logger = logger
+        
+    def on_batch_end(self, batch, logs={}):
+        self.logger.set_value(logs.get('loss'))
 
 def make_convnet(input_shape, n_class, width=2, dropout=.2):
     """Builds a classic CNN model. width adjusts layer width
@@ -51,7 +59,7 @@ def make_convnet(input_shape, n_class, width=2, dropout=.2):
     )
     return model
 
-def train_convnet(model, train_generator, val_generator, directory, verbose=False):
+def train_convnet(model, train_generator, val_generator, directory, verbose=False, loss_obj=None):
     """Trains models for 100 epochs. Saves best validation accuracy,
     best validation loss, and final "overfit" model, into:
     ./models/ + directory + 'best_acc.h5', 'best_loss.h5',
@@ -66,6 +74,9 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
     callbacks.append(acc_)
     loss_ = ModelCheckpoint(save_path + 'best_loss.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
     callbacks.append(loss_)
+    if loss_obj != None:
+        loss_logger = LossLogger(loss_obj)
+        callbacks.append(loss_logger)
     history = model.fit_generator(
         train_generator,
         steps_per_epoch = 100,
@@ -135,7 +146,7 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
     
     return train_model, eval_model, manipulate_model
 
-def train_capsnet(model, train_generator, val_generator, directory, verbose=False, lr=.001, lr_decay=.9):
+def train_capsnet(model, train_generator, val_generator, directory, verbose=False, lr=.001, lr_decay=.9, loss_obj=None):
     """Trains models for 100 epochs. Saves best validation accuracy,
     best validation loss, and final "overfit" model, into:
     ./models/ + directory + 'best_acc.h5', 'best_loss.h5',
@@ -152,6 +163,9 @@ def train_capsnet(model, train_generator, val_generator, directory, verbose=Fals
     callbacks.append(loss_)
     lr_ = LearningRateScheduler(schedule=lambda epoch: lr * (lr_decay ** epoch))
     callbacks.append(lr_)
+    if loss_obj != None:
+        loss_logger = LossLogger(loss_obj)
+        callbacks.append(loss_logger)
     
     def caps_tg(gen=train_generator):
         while True:

@@ -62,13 +62,12 @@ def image_from_index(idx, df, path):
     img = Image.open(path + filename)
     return img
 
-def augment(img, aug_mask=9000, augmentation_rate=1):
+def augment(img, loss=1):
     """applies a series of augmentations to 
     input image and returns.
     """
-    #small chance for zero augmentation.
-    likelihood = 1-(augmentation_rate*aug_mask/10000)
-    if random.random() < likelihood:
+    #use loss to control augmentation likelihood.
+    if random.random() < loss:
         return img
     #Apply random skew to img
     skew = Augmentor.Operations.Skew(1, 'RANDOM', .5)
@@ -83,7 +82,21 @@ def augment(img, aug_mask=9000, augmentation_rate=1):
     img = res[0]
     return img
 
-def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True, augmentation_rate=1):
+class LossTracker(object):
+    """Tracks model loss for augmentation scheduling."""
+    def __init__(self, value=10):
+        self.value = value
+        return
+        
+    def set_value(self, value):
+        if value:
+            self.value = value
+        return
+        
+    def __float__(self):
+        return float(self.value)
+
+def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True, loss_obj=1):
     """Produces a random batch of training examples."""
     count = 0
     while True:
@@ -95,8 +108,9 @@ def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True, aug
             idx = df.sample().index[0]
             img = image_from_index(idx, df, path)
             #augment image
+            loss = float(loss_obj)
             if augmentation:
-                img = augment(img, aug_mask=count, augmentation_rate=augmentation_rate)
+                img = augment(img, loss=loss)
             tensor = as_tensor(img)
             batch.append(tensor)
             #create one-hot encoded label vector
