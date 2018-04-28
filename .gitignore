@@ -10,4 +10,5 @@ images_background_small1
 images_background_small2
 .ipynb_checkpoints
 __pycache__
-
+train
+eval
