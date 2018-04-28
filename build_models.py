@@ -1,14 +1,22 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from capsulenet import CapsNet, margin_loss
+from capsulenet import CapsNet, MarginLoss
 from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
 from keras.layers import Input, Conv2D, MaxPooling2D, BatchNormalization, Dropout, Dense, Reshape, Add, Flatten
 from keras.models import Model, Sequential, load_model
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback
 from keras.optimizers import Adam, SGD
 
-class LossLogger(Callback):
+class LossLoggerCNN(Callback):
+    def __init__(self, logger):
+        """Give it a logger"""
+        self.logger = logger
+        
+    def on_batch_end(self, batch, logs={}):
+        self.logger.set_value(logs.get('loss'))
+        
+class LossLoggerCaps(Callback):
     def __init__(self, logger):
         """Give it a logger"""
         self.logger = logger
@@ -75,7 +83,7 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
     loss_ = ModelCheckpoint(save_path + 'best_loss.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
     callbacks.append(loss_)
     if loss_obj != None:
-        loss_logger = LossLogger(loss_obj)
+        loss_logger = LossLoggerCNN(loss_obj)
         callbacks.append(loss_logger)
     history = model.fit_generator(
         train_generator,
@@ -136,10 +144,11 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
     manipulate_model = Model([x, y, noise], decoder(masked_noised_y))
     #train_model, eval_model, manipulate_model
 
+    margin_loss = MarginLoss(lambda_downweight=.4)
     train_model.compile(optimizer=Adam(lr=.001),
                   loss=[margin_loss, 'mse'],
                   loss_weights=[1., reconstruction_loss],
-                  metrics={'capsnet': 'accuracy'}
+                  metrics={'capsnet': 'categorical_accuracy'}
                        )
 
     
@@ -157,14 +166,14 @@ def train_capsnet(model, train_generator, val_generator, directory, verbose=Fals
     os.system('mkdir {}'.format('/'.join(save_path.split('/')[:3])))
     os.system('mkdir {}'.format('/'.join(save_path.split('/')[:4])))
     callbacks = []
-    acc_ = ModelCheckpoint(save_path + 'best_acc_caps.h5', monitor='val_capsnet_acc', save_best_only=True, verbose=verbose)
+    acc_ = ModelCheckpoint(save_path + 'best_acc_caps.h5', monitor='val_capsnet_categorical_accuracy', save_best_only=True, verbose=verbose)
     callbacks.append(acc_)
     loss_ = ModelCheckpoint(save_path + 'best_loss_caps.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
     callbacks.append(loss_)
     lr_ = LearningRateScheduler(schedule=lambda epoch: lr * (lr_decay ** epoch))
     callbacks.append(lr_)
     if loss_obj != None:
-        loss_logger = LossLogger(loss_obj)
+        loss_logger = LossLoggerCaps(loss_obj)
         callbacks.append(loss_logger)
     
     def caps_tg(gen=train_generator):
@@ -194,7 +203,7 @@ def train_capsnet(model, train_generator, val_generator, directory, verbose=Fals
     return history
 
 
-def plot_history(history, model_name='model'):
+def plot_history(history, model_name='model', capsnet=False):
     """Takes a history object and makes some plots."""
     plt.plot(history.history['categorical_accuracy']);
     plt.plot(history.history['val_categorical_accuracy']);

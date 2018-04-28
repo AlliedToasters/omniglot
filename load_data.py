@@ -84,8 +84,9 @@ def augment(img, loss=1):
 
 class LossTracker(object):
     """Tracks model loss for augmentation scheduling."""
-    def __init__(self, value=10):
+    def __init__(self, value=10, scale_by=1):
         self.value = value
+        self.scale = scale_by
         return
         
     def set_value(self, value):
@@ -94,7 +95,7 @@ class LossTracker(object):
         return
         
     def __float__(self):
-        return float(self.value)
+        return float(self.value * self.scale)
 
 def train_gen(df, labels, batch_size=20, path='./train/', augmentation=True, loss_obj=1):
     """Produces a random batch of training examples."""

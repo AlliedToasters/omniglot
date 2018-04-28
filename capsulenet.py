@@ -77,17 +77,22 @@ def CapsNet(input_shape, n_class, routings):
     return train_model, eval_model, manipulate_model
 
 
-def margin_loss(y_true, y_pred):
+class MarginLoss(object):
     """
     Margin loss for Eq.(4). When y_true[i, :] contains not just one `1`, this loss should work too. Not test it.
     :param y_true: [None, n_classes]
     :param y_pred: [None, num_capsule]
     :return: a scalar loss value.
     """
-    L = y_true * K.square(K.maximum(0., 0.9 - y_pred)) + \
-        0.5 * (1 - y_true) * K.square(K.maximum(0., y_pred - 0.1))
+    def __init__(self, lambda_downweight=.5):
+        self.lbda = lambda_downweight
+        self.__name__ = 'margin_loss'
+        
+    def __call__(self, y_true, y_pred):
+        L = y_true * K.square(K.maximum(0., 0.9 - y_pred)) + \
+            self.lbda * (1 - y_true) * K.square(K.maximum(0., y_pred - 0.1))
 
-    return K.mean(K.sum(L, 1))
+        return K.mean(K.sum(L, 1))
 
 
 def train(model, data, args):
