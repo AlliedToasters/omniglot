@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 from keras.models import load_model
+from skimage.transform import SimilarityTransform, AffineTransform, ProjectiveTransform, warp, rotate
 
 def load_directory(directory):
     """Loads image files from the directory in
@@ -50,7 +51,10 @@ def as_tensor(image):
     """Converts an image object into a tensor
     shape (m, n, 1) (channels last)
     """
-    as_array = np.array(image)
+    if type(image) == type(np.array([])):
+        as_array = image
+    else:
+        as_array = np.array(image)
     result = np.expand_dims(as_array, axis=-1)
     return result
 
@@ -62,25 +66,60 @@ def image_from_index(idx, df, path):
     img = Image.open(path + filename)
     return img
 
-def augment(img, loss=1):
+def trapezoid_shift(image, magnitude):
+    mag = magnitude // 2
+    a = random.randint(-mag, mag)
+    b = random.randint(-mag, mag)
+    c = random.randint(-mag, mag)
+    d = random.randint(-mag, mag)
+    src = np.array([[0, 0], [0, 105], [105, 105], [105, 0]])
+    dst = np.array([[0 + a, 0 + b], [0 + c, 105 - b], [105 - c, 105 + d], [105 - a, 0 - d]])
+
+    proj_tform = ProjectiveTransform()
+    proj_tform.estimate(src, dst)
+    warped = warp(image, proj_tform, output_shape=(105, 105), mode='edge')
+    return warped
+
+def distort(image, magnitude=0):
+    """Uses PIL, so must be PIL object."""
+    a = max(0, magnitude-4)
+    distortion = random.randint(0, a)
+    dstrt = Augmentor.Operations.Distort(1, 4, 4, distortion)
+    res = dstrt.perform_operation([image])
+    return res[0]
+    
+def rotate_transform(image, magnitude):
+    """Applies rotation transform."""
+    a = magnitude
+    rot = random.randint(-a, a)
+    arr = rotate(image, angle=rot, mode='edge')
+    return arr
+    
+def nudge_transform(image, magnitude):
+    """Nudges image by some number of pixels."""
+    a = min(8, (magnitude + 2))
+    tx = random.randint(-a, a)
+    ty = random.randint(-a, a)
+    tform = SimilarityTransform(translation=(ty, tx))
+    arr = warp(image, tform, mode='edge')
+    return arr
+
+def augment(img, loss=2):
     """applies a series of augmentations to 
     input image and returns.
     """
-    #use loss to control augmentation likelihood.
-    if random.random() < loss:
-        return img
-    #Apply random skew to img
-    skew = Augmentor.Operations.Skew(1, 'RANDOM', .5)
-    res = skew.perform_operation([img])
-    img = res[0]
-    #Apply random elastic distortion to img
-    distortion = random.randint(5, 16)
-    gridx = random.randint(1, 3)
-    gridy = random.randint(1, 3)
-    distort = Augmentor.Operations.Distort(1, gridx, gridy, distortion)
-    res = distort.perform_operation([img])
-    img = res[0]
-    return img
+    max_magnitude = int(max(1.5 - loss, 0) * 10)
+    if max_magnitude == 0:
+        magnitude = 0
+    else:
+        magnitude = random.randint(0, max_magnitude)
+    img = distort(img, magnitude)
+    #convert to array for these transforms.
+    arr = np.array(img)
+    arr = rotate_transform(arr, magnitude)
+    arr = nudge_transform(arr, magnitude)
+    arr = trapezoid_shift(arr, magnitude)
+    return arr
 
 class LossTracker(object):
     """Tracks model loss for augmentation scheduling."""
@@ -233,6 +272,29 @@ def quiz(model, df, labels, path='./eval/', verbose=1):
             round(1-classified/total_classified, 3))
              )
     return correct, total, classified, total_classified
+
+def plot_training_characters(train):
+    """Plots the training characters for presentation"""
+    path = './train/'
+    images = train.iterrows()
+    n_rows = len(train)//7 + 1
+    fig, ax = plt.subplots(n_rows, 7, figsize=(12, n_rows*1.5));
+    for i, row in enumerate(ax):
+        for j, column in enumerate(row):
+            ax[i, j].set_xticks([])
+            ax[i, j].set_yticks([])
+            try:
+                k, next_character = next(images)
+            except:
+                ax[i, j].set_visible(False)
+            label = next_character.label
+            file = next_character.file
+            img = np.array(Image.open(path + file))
+            ax[i, j].set_title('Label {}'.format(label+1))
+            ax[i, j].imshow(img, cmap = 'Greys_r')
+    plt.tight_layout()
+    plt.show();
+    return
 
 def quiz_models(directory, test, labels, capsnet=False):
     """Loads models from directory and runs the quiz on them."""

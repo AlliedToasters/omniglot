@@ -67,7 +67,7 @@ def make_convnet(input_shape, n_class, width=2, dropout=.2):
     )
     return model
 
-def train_convnet(model, train_generator, val_generator, directory, verbose=False, loss_obj=None):
+def train_convnet(model, train_generator, val_generator, directory, verbose=False, loss_obj=None, epochs=200):
     """Trains models for 100 epochs. Saves best validation accuracy,
     best validation loss, and final "overfit" model, into:
     ./models/ + directory + 'best_acc.h5', 'best_loss.h5',
@@ -88,7 +88,7 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
     history = model.fit_generator(
         train_generator,
         steps_per_epoch = 100,
-        epochs=200,
+        epochs=epochs,
         validation_data = val_generator,
         validation_steps = 1,
         callbacks = callbacks, 
