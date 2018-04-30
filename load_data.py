@@ -214,7 +214,173 @@ def quiz_batch(indices, df, labels, path='./eval/'):
     Y = np.array(labels)
     return X, Y
         
-def quiz(model, df, labels, path='./eval/', verbose=1):
+def get_train_img(idx, df):
+    """Shortcut to display training image."""
+    path = './train/'
+    img = image_from_index(idx, df, path)
+    return img
+
+def capsnet_visualize_quiz(X, Y, prediction, quiz_labels, train_df, reconstruction):
+    """Visualizes the results of a 'quiz'.
+    for presentation.
+    """
+    quiz_Y = Y[:, quiz_labels]
+    quiz_prediction = prediction[:, quiz_labels]
+    correct_answers = quiz_labels[np.argmax(quiz_Y, axis=0)]
+    predicted_answers = quiz_labels[np.argmax(quiz_prediction, axis=0)]
+    correct_idx = np.argwhere(correct_answers == predicted_answers)[0][0]
+    correct_class = quiz_labels[correct_idx]
+    incorrect_idx = np.argwhere(correct_answers != predicted_answers)[0][0]
+    incorrect_class = quiz_labels[incorrect_idx]
+    confused_class = predicted_answers[incorrect_idx]
+    #Correct answer example
+    train_img = get_train_img(correct_class, train_df)
+    fig, ax = plt.subplots(5, 5, figsize=(8, 8))
+    fig.suptitle('Correct Result')
+    current_label = 0
+    for i in range(5):
+        for j in range(5):
+            if i == 0:
+                if j == 1:
+                    ax[i, j].set_title('training image')
+                    ax[i, j].imshow(train_img, cmap='Greys_r')
+                    ax[i, j].set_xticks([])
+                    ax[i, j].set_yticks([])
+                elif j == 3:
+                    ax[i, j].set_title('reconstructed image')
+                    ax[i, j].imshow(reconstruction[correct_idx, :, :, 0], cmap='Greys_r')
+                    ax[i, j].set_xticks([])
+                    ax[i, j].set_yticks([])
+                else:
+                    ax[i, j].set_visible(False)
+            else:
+                likelihood = quiz_prediction[current_label, correct_idx]
+                img = X[current_label, :, :, 0]
+                title = '{}'.format(str(round(likelihood, 5)))
+                if quiz_Y[current_label, correct_idx] == 1:
+                    title += ('(correct)')
+                title = '{}'.format(title)
+                ax[i, j].set_title(title)
+                ax[i, j].set_xticks([])
+                ax[i, j].set_yticks([])
+                ax[i, j].imshow(img, cmap='Greys_r')
+                current_label += 1
+    plt.show()
+    
+    #Incorrect answer example
+    train_img = get_train_img(incorrect_class, train_df)
+    fig, ax = plt.subplots(5, 5, figsize=(8, 8))
+    fig.suptitle('Incorrect Result')
+    current_label = 0
+    for i in range(5):
+        for j in range(5):
+            if i == 0:
+                if j == 1:
+                    ax[i, j].set_title('training image')
+                    ax[i, j].imshow(train_img, cmap='Greys_r')
+                    ax[i, j].set_xticks([])
+                    ax[i, j].set_yticks([])
+                if j == 3:
+                    ax[i, j].set_title('confused reconstruction')
+                    ax[i, j].imshow(reconstruction[incorrect_idx, :, :, 0], cmap='Greys_r')
+                    ax[i, j].set_xticks([])
+                    ax[i, j].set_yticks([])
+                else:
+                    ax[i, j].set_visible(False)
+            else:
+                likelihood = quiz_prediction[current_label, incorrect_idx]
+                img = X[current_label, :, :, 0]
+                title = '{}'.format(str(round(likelihood, 5)))
+                if quiz_Y[current_label, incorrect_idx] == 1:
+                    title += ('(correct)')
+                elif quiz_labels[current_label] == confused_class:
+                    title += ('(selected)')
+                title = '{}'.format(title)
+                ax[i, j].set_title(title)
+                ax[i, j].set_xticks([])
+                ax[i, j].set_yticks([])
+                ax[i, j].imshow(img, cmap='Greys_r')
+                current_label += 1
+    plt.show()
+    return
+
+def visualize_quiz(X, Y, prediction, quiz_labels, train_df):
+    """Visualizes the results of a 'quiz'.
+    for presentation.
+    """
+    quiz_Y = Y[:, quiz_labels]
+    quiz_prediction = prediction[:, quiz_labels]
+    correct_answers = quiz_labels[np.argmax(quiz_Y, axis=0)]
+    predicted_answers = quiz_labels[np.argmax(quiz_prediction, axis=0)]
+    correct_idx = np.argwhere(correct_answers == predicted_answers)[0][0]
+    correct_class = quiz_labels[correct_idx]
+    incorrect_idx = np.argwhere(correct_answers != predicted_answers)[0][0]
+    incorrect_class = quiz_labels[incorrect_idx]
+    confused_class = predicted_answers[incorrect_idx]
+    #Correct answer example
+    train_img = get_train_img(correct_class, train_df)
+    fig, ax = plt.subplots(5, 5, figsize=(8, 8))
+    fig.suptitle('Correct Result')
+    current_label = 0
+    for i in range(5):
+        for j in range(5):
+            if i == 0:
+                if j == 2:
+                    ax[i, j].set_title('training image')
+                    ax[i, j].imshow(train_img, cmap='Greys_r')
+                    ax[i, j].set_xticks([])
+                    ax[i, j].set_yticks([])
+                else:
+                    ax[i, j].set_visible(False)
+            else:
+                likelihood = quiz_prediction[current_label, correct_idx]
+                img = X[current_label, :, :, 0]
+                title = '{}'.format(str(round(likelihood, 5)))
+                if quiz_Y[current_label, correct_idx] == 1:
+                    title += ('(correct)')
+                title = '{}'.format(title)
+                ax[i, j].set_title(title)
+                ax[i, j].set_xticks([])
+                ax[i, j].set_yticks([])
+                ax[i, j].imshow(img, cmap='Greys_r')
+                current_label += 1
+    plt.show()
+    
+    #Incorrect answer example
+    train_img = get_train_img(incorrect_class, train_df)
+    fig, ax = plt.subplots(5, 5, figsize=(8, 8))
+    fig.suptitle('Incorrect Result')
+    current_label = 0
+    for i in range(5):
+        for j in range(5):
+            if i == 0:
+                if j == 2:
+                    ax[i, j].set_title('training image')
+                    ax[i, j].imshow(train_img, cmap='Greys_r')
+                    ax[i, j].set_xticks([])
+                    ax[i, j].set_yticks([])
+                else:
+                    ax[i, j].set_visible(False)
+            else:
+                likelihood = quiz_prediction[current_label, incorrect_idx]
+                img = X[current_label, :, :, 0]
+                title = '{}'.format(str(round(likelihood, 5)))
+                if quiz_Y[current_label, incorrect_idx] == 1:
+                    title += ('(correct)')
+                elif quiz_labels[current_label] == confused_class:
+                    title += ('(selected)')
+                title = '{}'.format(title)
+                ax[i, j].set_title(title)
+                ax[i, j].set_xticks([])
+                ax[i, j].set_yticks([])
+                ax[i, j].imshow(img, cmap='Greys_r')
+                current_label += 1
+    plt.show()
+    return
+    
+    
+
+def quiz(model, df, labels, path='./eval/', verbose=1, visualize=False, train_df=None, capsnet=False):
     """Runs the 'quiz' used in the paper:
     Given 20 choices, choose the character belonging
     to the correct class.
@@ -223,6 +389,7 @@ def quiz(model, df, labels, path='./eval/', verbose=1):
     2. For each class label, assign the max value to that class.
     3. Return classwise accuracy.
     """
+    visualized = False
     correct = 0
     total = 0
     classified = 0
@@ -231,12 +398,25 @@ def quiz(model, df, labels, path='./eval/', verbose=1):
         test_no = str(n)
         if len(test_no) == 1:
             test_no = '0' + test_no
-        test_samples = df[['_' + test_no in x for x in df.file]]
+        test_samples = df[['_' + test_no in x for x in df.file]].sample(20, replace=False)
+        quiz_labels = test_samples.label.values.astype(int)
         X, Y = quiz_batch(test_samples.index, df=df, labels=labels)
+        quiz_Y = Y[:, quiz_labels]
         prediction = model.predict(X)
-        correct_answers = np.argmax(Y, axis=1)
-        predicted_answers = np.argmax(prediction, axis=1)
+        if capsnet:
+            prediction, reconstructed = prediction
+        quiz_prediction = prediction[:, quiz_labels]
+        correct_answers = quiz_labels[np.argmax(quiz_Y, axis=0)]
+        predicted_answers = quiz_labels[np.argmax(quiz_prediction, axis=0)]
         num_correct = np.where(correct_answers == predicted_answers, 1, 0).sum()
+        if visualize and not visualized:
+            if 0 < num_correct < 20:
+                if capsnet:
+                    capsnet_visualize_quiz(X, Y, prediction, quiz_labels, train_df=train_df, reconstruction=reconstructed)
+                    visualized = True
+                else:
+                    visualize_quiz(X, Y, prediction, quiz_labels, train_df=train_df)
+                    visualized = True
         correct += num_correct
         total += len(correct_answers)
         if verbose==2:
@@ -247,8 +427,8 @@ def quiz(model, df, labels, path='./eval/', verbose=1):
                     num_correct, 
                     len(correct_answers)
                 ))
-        correct_classifications = np.argmax(Y, axis=0)
-        classifications = np.argmax(prediction, axis=0)
+        correct_classifications = np.argmax(Y, axis=1)
+        classifications = np.argmax(prediction, axis=1)
         num_classified = np.where(correct_classifications == classifications, 1, 0).sum()
         classified += num_classified
         total_classified += len(correct_classifications)
@@ -296,22 +476,26 @@ def plot_training_characters(train):
     plt.show();
     return
 
-def quiz_models(directory, test, labels, capsnet=False):
-    """Loads models from directory and runs the quiz on them."""
+def quiz_models(directory, test, labels, capsnet=False, eval_model=None):
+    """Loads models from directory and runs the quiz on them.
+    If capsnet, eval_model must be passed in."""
     model_directory = './models' + directory[1:]
     print('\nquizzing best accuracy model...\n')
-    best_acc = load_model(model_directory + 'best_acc.h5')
     if capsnet:
-        best_acc = load_model(model_directory + 'best_acc_caps.h5')
+        best_acc = eval_model.load_weights(model_directory + 'best_acc_caps.h5')
+    else:
+        best_acc = load_model(model_directory + 'best_acc.h5')
     results1 = quiz(best_acc, test, labels)
     print('\nquizzing best loss model...\n')
-    best_loss = load_model(model_directory + 'best_loss.h5')
     if capsnet:
-        best_acc = load_model(model_directory + 'best_loss_caps.h5')
+        best_loss = eval_model.load_weights(model_directory + 'best_loss_caps.h5')
+    else:
+        best_loss = load_model(model_directory + 'best_loss.h5')
     results2 = quiz(best_loss, test, labels)
     print('\nquizzing best overfit model...\n')
-    overfit = load_model(model_directory + 'overfit.h5')
     if capsnet:
-        best_acc = load_model(model_directory + 'overfit_caps.h5')
+        overfit = eval_model.load_weights(model_directory + 'overfit_caps.h5')
+    else:
+        overfit = load_model(model_directory + 'overfit.h5')
     results3 = quiz(overfit, test, labels)
     return results1, results2, results3

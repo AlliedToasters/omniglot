@@ -98,10 +98,13 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
     return history
 
 
-def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
+def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_downweight=.4):
     """
     Puts together a modified capsnet for the problem.
     Returns a compiled model.
+    lambda_downweight is the downweight given to negative examples
+    to avoid all capsules shrinking to zero. Lower value for higher
+    number of classes.
     """
     x = Input(shape=input_shape)
 
@@ -144,7 +147,7 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
     manipulate_model = Model([x, y, noise], decoder(masked_noised_y))
     #train_model, eval_model, manipulate_model
 
-    margin_loss = MarginLoss(lambda_downweight=.4)
+    margin_loss = MarginLoss(lambda_downweight=lambda_downweight)
     train_model.compile(optimizer=Adam(lr=.001),
                   loss=[margin_loss, 'mse'],
                   loss_weights=[1., reconstruction_loss],
@@ -155,10 +158,17 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss):
     
     return train_model, eval_model, manipulate_model
 
-def train_capsnet(model, train_generator, val_generator, directory, verbose=False, lr=.001, lr_decay=.9, loss_obj=None):
+def train_capsnet(model, train_generator, val_generator, directory, 
+                  verbose=False, 
+                  lr=.001, 
+                  lr_decay=.9, 
+                  loss_obj=None, 
+                  epochs=100,
+                  validation_steps=19
+                 ):
     """Trains models for 100 epochs. Saves best validation accuracy,
-    best validation loss, and final "overfit" model, into:
-    ./models/ + directory + 'best_acc.h5', 'best_loss.h5',
+    best validation loss, and final "overfit" model (weights only), into:
+    ./models/ + directory + 'best_acc_caps.h5', 'best_loss_caps.h5',
     'overfit.h5'
     """
     save_path = './models' + directory[1:]
@@ -166,10 +176,22 @@ def train_capsnet(model, train_generator, val_generator, directory, verbose=Fals
     os.system('mkdir {}'.format('/'.join(save_path.split('/')[:3])))
     os.system('mkdir {}'.format('/'.join(save_path.split('/')[:4])))
     callbacks = []
-    acc_ = ModelCheckpoint(save_path + 'best_acc_caps.h5', monitor='val_capsnet_categorical_accuracy', save_best_only=True, verbose=verbose)
-    callbacks.append(acc_)
-    loss_ = ModelCheckpoint(save_path + 'best_loss_caps.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
-    callbacks.append(loss_)
+    acc_checkpoint = ModelCheckpoint(
+        save_path + 'best_acc_caps.h5', 
+        monitor='val_capsnet_categorical_accuracy', 
+        save_best_only=True, 
+        verbose=verbose, 
+        save_weights_only=True
+    )
+    callbacks.append(acc_checkpoint)
+    loss_checkpoint = ModelCheckpoint(
+        save_path + 'best_loss_caps.h5', 
+        monitor='val_loss', 
+        save_best_only=True, 
+        verbose=verbose, 
+        save_weights_only=True
+    )
+    callbacks.append(loss_checkpoint)
     lr_ = LearningRateScheduler(schedule=lambda epoch: lr * (lr_decay ** epoch))
     callbacks.append(lr_)
     if loss_obj != None:
@@ -193,13 +215,13 @@ def train_capsnet(model, train_generator, val_generator, directory, verbose=Fals
     history = model.fit_generator(
         ctg,
         steps_per_epoch = 100,
-        epochs=100,
+        epochs=epochs,
         validation_data = cvg,
-        validation_steps = 19,
+        validation_steps = validation_steps,
         callbacks = callbacks, 
         verbose=verbose
     )
-    model.save('overfit_caps.h5')
+    model.save_weights('overfit_caps.h5')
     return history
 
 
