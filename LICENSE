@@ -1,6 +1,16 @@
 The MIT License (MIT)
 
-Copyright (c) 2015 Brenden Lake
+Copyright (c) 2018 Michael Klear
+
+WARNING: THIS SOFTWARE USES OTHER MIT-LICENSED SOFTWARE AND THIS LICENSE DOES NOT SPECIFICALLY REFERENCE ANY OF THESE LICENSES. PLEASE CHECK ALL LICENSES FOR THESE DEPENDENCIES:
+
+TensorFlow
+Keras
+Pandas
+Numpy
+Scikit-Image
+Augmentor
+Capsnet-Keras
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
