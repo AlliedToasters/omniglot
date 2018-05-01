@@ -5,7 +5,7 @@ from capsulenet import CapsNet, MarginLoss
 from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
 from keras.layers import Input, Conv2D, MaxPooling2D, BatchNormalization, Dropout, Dense, Reshape, Add, Flatten
 from keras.models import Model, Sequential, load_model
-from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback, TensorBoard
 from keras.optimizers import Adam, SGD
 
 class LossLoggerCNN(Callback):
@@ -54,7 +54,7 @@ def make_convnet(input_shape, n_class, width=2, dropout=.2):
     x = Dropout(dropout)(x)
     x = Dense(16*width, activation='relu')(x)
     x = Dropout(dropout)(x)
-    x = Dense(8*width, activation='relu')(x)
+    x = Dense(64*width, activation='relu')(x)
     x = Dropout(dropout)(x)
     x = Dense(n_class, activation='softmax')(x)
 
@@ -62,7 +62,7 @@ def make_convnet(input_shape, n_class, width=2, dropout=.2):
     model = Model(inputs=inputs, outputs=x)
     model.compile(
         loss='categorical_crossentropy',
-        optimizer=SGD(decay=.001),
+        optimizer=SGD(decay=.0001, nesterov=True, momentum=.1),
         metrics=['categorical_accuracy']
     )
     return model
@@ -82,6 +82,8 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
     callbacks.append(acc_)
     loss_ = ModelCheckpoint(save_path + 'best_loss.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
     callbacks.append(loss_)
+    tboard = TensorBoard('./logs', batch_size=30)
+    callbacks.append(tboard)
     if loss_obj != None:
         loss_logger = LossLoggerCNN(loss_obj)
         callbacks.append(loss_logger)
@@ -107,17 +109,16 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_dow
     number of classes.
     """
     x = Input(shape=input_shape)
-
+    dim_digitcaps = 16
     # Layer 1: Just a conventional Conv2D layer
-    conv1 = Conv2D(filters=128, kernel_size=9, strides=2, padding='valid', activation='relu', name='conv1')(x)
-    conv2 = Conv2D(filters=256, kernel_size=5, strides=2, padding='valid', activation='relu', name='conv2')(conv1)
-    conv2._keras_shape
+    conv1 = Conv2D(filters=128, kernel_size=11, strides=2, padding='valid', activation='relu', name='conv1')(x)
+    conv2 = Conv2D(filters=256, kernel_size=7, strides=2, padding='valid', activation='relu', name='conv2')(conv1)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
-    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    primarycaps = PrimaryCap(conv2, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
-    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, routings=routings,
+    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=dim_digitcaps, routings=routings,
                              name='digitcaps')(primarycaps)
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
@@ -129,9 +130,9 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_dow
     masked_by_y = Mask()([digitcaps, y])  # The true label is used to mask the output of capsule layer. For training
     masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
-    # Shared Decoder model in training and prediction
+    # Shared Decoder model in training and prediction.
     decoder = Sequential(name='decoder')
-    decoder.add(Dense(512, activation='relu', input_dim=16*n_class))
+    decoder.add(Dense(512, activation='relu', input_dim=dim_digitcaps*n_class))
     decoder.add(Dense(1024, activation='relu'))
     decoder.add(Dense(np.prod(input_shape), activation='sigmoid'))
     decoder.add(Reshape(target_shape=input_shape, name='out_recon'))
@@ -141,7 +142,7 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_dow
     eval_model = Model(x, [out_caps, decoder(masked)])
 
     # manipulate model
-    noise = Input(shape=(n_class, 16))
+    noise = Input(shape=(n_class, dim_digitcaps))
     noised_digitcaps = Add()([digitcaps, noise])
     masked_noised_y = Mask()([noised_digitcaps, y])
     manipulate_model = Model([x, y, noise], decoder(masked_noised_y))
@@ -150,7 +151,7 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_dow
     margin_loss = MarginLoss(lambda_downweight=lambda_downweight)
     train_model.compile(optimizer=Adam(lr=.001),
                   loss=[margin_loss, 'mse'],
-                  loss_weights=[1., reconstruction_loss],
+                  loss_weights=[1, reconstruction_loss],
                   metrics={'capsnet': 'categorical_accuracy'}
                        )
 
@@ -221,25 +222,65 @@ def train_capsnet(model, train_generator, val_generator, directory,
         callbacks = callbacks, 
         verbose=verbose
     )
-    model.save_weights('overfit_caps.h5')
+    model.save_weights(save_path + 'overfit_caps.h5')
     return history
 
 
 def plot_history(history, model_name='model', capsnet=False):
     """Takes a history object and makes some plots."""
-    plt.plot(history.history['categorical_accuracy']);
-    plt.plot(history.history['val_categorical_accuracy']);
-    plt.title('{} accuracy'.format(model_name));
-    plt.ylabel('accuracy');
-    plt.xlabel('epoch');
-    plt.legend(['train', 'test'], loc='upper left');
-    plt.show();
+    if capsnet:
+        fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+    else:
+        fig, ax = plt.subplots(1, 2, figsize=(8, 5))
+    if capsnet:
+        ax[0, 0].plot(history.history['capsnet_categorical_accuracy']);
+        ax[0, 0].plot(history.history['val_capsnet_categorical_accuracy']);
+        ax[0, 0].set_title('{} accuracy'.format(model_name));
+        ax[0, 0].set_ylabel('accuracy');
+        ax[0, 0].set_xlabel('epoch');
+        ax[0, 0].legend(['train', 'test'], loc='upper left');
+    else:
+        ax[0].plot(history.history['categorical_accuracy']);
+        ax[0].plot(history.history['val_categorical_accuracy']);
+        ax[0].set_title('{} accuracy'.format(model_name));
+        ax[0].set_ylabel('accuracy');
+        ax[0].set_xlabel('epoch');
+        ax[0].legend(['train', 'test'], loc='upper left');
+    
+    if capsnet:
+        ax[0, 1].plot(history.history['decoder_loss']);
+        ax[0, 1].plot(history.history['val_decoder_loss']);
+        ax[0, 1].set_title('{} reconstruction loss'.format(model_name));
+        ax[0, 1].set_ylabel('loss');
+        ax[0, 1].set_xlabel('epoch');
+        ax[0, 1].legend(['train', 'test'], loc='upper left');
+        
+    
+    if capsnet:
+        ax[1, 0].plot(history.history['capsnet_loss']);
+        ax[1, 0].plot(history.history['val_capsnet_loss']);
+        ax[1, 0].set_title('{} classification loss'.format(model_name));
+        ax[1, 0].set_ylabel('loss');
+        ax[1, 0].set_xlabel('epoch');
+        ax[1, 0].legend(['train', 'test'], loc='upper left');
 
     plt.plot(history.history['loss']);
     plt.plot(history.history['val_loss']);
-    plt.title('{} loss'.format(model_name));
-    plt.ylabel('loss');
-    plt.xlabel('epoch');
-    plt.legend(['train', 'test'], loc='upper left');
+    if capsnet:
+        ax[1, 1].plot(history.history['loss']);
+        ax[1, 1].plot(history.history['val_loss']);
+        title = '{} combined loss'.format(model_name);
+        ax[1, 1].set_title(title)
+        ax[1, 1].set_ylabel('loss');
+        ax[1, 1].set_xlabel('epoch');
+    else:
+
+        ax[1].plot(history.history['loss']);
+        ax[1].plot(history.history['val_loss']);
+        title = '{} loss'.format(model_name)
+        ax[1].set_title(title);
+        ax[1].set_ylabel('loss');
+        ax[1].set_xlabel('epoch');
+        ax[1].legend(['train', 'test'], loc='upper left');
     plt.show();
     return

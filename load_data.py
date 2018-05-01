@@ -476,7 +476,7 @@ def plot_training_characters(train):
     plt.show();
     return
 
-def quiz_models(directory, test, labels, capsnet=False, eval_model=None):
+def quiz_models(directory, test, labels, visualize=False, capsnet=False, eval_model=None, train_df=None):
     """Loads models from directory and runs the quiz on them.
     If capsnet, eval_model must be passed in."""
     model_directory = './models' + directory[1:]
@@ -491,7 +491,7 @@ def quiz_models(directory, test, labels, capsnet=False, eval_model=None):
         best_loss = eval_model.load_weights(model_directory + 'best_loss_caps.h5')
     else:
         best_loss = load_model(model_directory + 'best_loss.h5')
-    results2 = quiz(best_loss, test, labels)
+    results2 = quiz(best_loss, test, labels, visualize=visualize, train_df=train_df)
     print('\nquizzing best overfit model...\n')
     if capsnet:
         overfit = eval_model.load_weights(model_directory + 'overfit_caps.h5')
