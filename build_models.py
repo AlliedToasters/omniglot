@@ -7,6 +7,38 @@ from keras.layers import Input, Conv2D, MaxPooling2D, BatchNormalization, Dropou
 from keras.models import Model, Sequential, load_model
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler, Callback, TensorBoard
 from keras.optimizers import Adam, SGD
+import sys
+
+def update_progress(progress):
+    """Displays or updates a console progress bar
+    Accepts a float between 0 and 1. Any int will be converted to a float.
+    A value under 0 represents a 'halt'.
+    A value at 1 or bigger represents 100%
+    """
+    barLength = 25 # Modify this to change the length of the progress bar
+    status = ""
+    if isinstance(progress, int):
+        progress = float(progress)
+    if not isinstance(progress, float):
+        progress = 0
+        status = "error: progress var must be float\r\n"
+    if progress < 0:
+        progress = 0
+        status = "Halt...\r\n"
+    if progress >= 1:
+        progress = 1
+        status = "Done...\r\n"
+    block = int(round(barLength*progress))
+    text = "\rProgress: [{0}] {1}% {2}".format( "#"*block + "-"*(barLength-block), round(progress*100, 3), status)
+    sys.stdout.write(text)
+    sys.stdout.flush()
+    
+class ProgressBar(Callback):
+    def __init__(self, n_epochs):
+        self.n_epochs = n_epochs
+    
+    def on_epoch_end(self, epoch, logs={}):
+        update_progress(epoch/self.n_epochs)
 
 class LossLoggerCNN(Callback):
     def __init__(self, logger):
@@ -82,8 +114,8 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
     callbacks.append(acc_)
     loss_ = ModelCheckpoint(save_path + 'best_loss.h5', monitor='val_loss', save_best_only=True, verbose=verbose)
     callbacks.append(loss_)
-    tboard = TensorBoard('./logs', batch_size=30)
-    callbacks.append(tboard)
+    prog = ProgressBar(epochs)
+    callbacks.append(prog)
     if loss_obj != None:
         loss_logger = LossLoggerCNN(loss_obj)
         callbacks.append(loss_logger)
@@ -92,7 +124,7 @@ def train_convnet(model, train_generator, val_generator, directory, verbose=Fals
         steps_per_epoch = 100,
         epochs=epochs,
         validation_data = val_generator,
-        validation_steps = 1,
+        validation_steps = 19,
         callbacks = callbacks, 
         verbose=verbose
     )
@@ -113,7 +145,6 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_dow
     # Layer 1: Just a conventional Conv2D layer
     conv1 = Conv2D(filters=128, kernel_size=11, strides=2, padding='valid', activation='relu', name='conv1')(x)
     conv2 = Conv2D(filters=256, kernel_size=7, strides=2, padding='valid', activation='relu', name='conv2')(conv1)
-    conv2 = Conv2D(filters=256, kernel_size=5, strides=1, padding='valid', activation='relu', name='conv2')(conv1)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
     primarycaps = PrimaryCap(conv2, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
@@ -134,8 +165,6 @@ def make_capsnet(input_shape, n_class, routings, reconstruction_loss, lambda_dow
     # Shared Decoder model in training and prediction.
     decoder = Sequential(name='decoder')
     decoder.add(Dense(512, activation='relu', input_dim=dim_digitcaps*n_class))
-    decoder.add(Dense(1024, activation='relu'))
-    # Added another dense layer for additional pattern learning capacity.
     decoder.add(Dense(1024, activation='relu'))
     decoder.add(Dense(np.prod(input_shape), activation='sigmoid'))
     decoder.add(Reshape(target_shape=input_shape, name='out_recon'))
@@ -198,6 +227,8 @@ def train_capsnet(model, train_generator, val_generator, directory,
     callbacks.append(loss_checkpoint)
     lr_ = LearningRateScheduler(schedule=lambda epoch: lr * (lr_decay ** epoch))
     callbacks.append(lr_)
+    prog = ProgressBar(epochs)
+    callbacks.append(prog)
     if loss_obj != None:
         loss_logger = LossLoggerCaps(loss_obj)
         callbacks.append(loss_logger)
@@ -234,7 +265,7 @@ def plot_history(history, model_name='model', capsnet=False):
     if capsnet:
         fig, ax = plt.subplots(2, 2, figsize=(8, 8))
     else:
-        fig, ax = plt.subplots(1, 2, figsize=(8, 5))
+        fig, ax = plt.subplots(1, 2, figsize=(8, 4))
     if capsnet:
         ax[0, 0].plot(history.history['capsnet_categorical_accuracy']);
         ax[0, 0].plot(history.history['val_capsnet_categorical_accuracy']);
@@ -266,38 +297,7 @@ def plot_history(history, model_name='model', capsnet=False):
         ax[1, 0].set_ylabel('loss');
         ax[1, 0].set_xlabel('epoch');
         ax[1, 0].legend(['train', 'test'], loc='upper left');
-        plt.plot(history.history['capsnet_categorical_accuracy']);
-        plt.plot(history.history['val_capsnet_categorical_accuracy']);
-    else:
-        plt.plot(history.history['categorical_accuracy']);
-        plt.plot(history.history['val_categorical_accuracy']);
-    plt.title('{} accuracy'.format(model_name));
-    plt.ylabel('accuracy');
-    plt.xlabel('epoch');
-    plt.legend(['train', 'test'], loc='upper left');
-    plt.show();
-    
-    if capsnet:
-        plt.plot(history.history['decoder_loss']);
-        plt.plot(history.history['val_decoder_loss']);
-        plt.title('{} reconstruction loss'.format(model_name));
-        plt.ylabel('loss');
-        plt.xlabel('epoch');
-        plt.legend(['train', 'test'], loc='upper left');
-        plt.show();
         
-    
-    if capsnet:
-        plt.plot(history.history['capsnet_loss']);
-        plt.plot(history.history['val_capsnet_loss']);
-        plt.title('{} classification loss'.format(model_name));
-        plt.ylabel('loss');
-        plt.xlabel('epoch');
-        plt.legend(['train', 'test'], loc='upper left');
-        plt.show();
-
-    plt.plot(history.history['loss']);
-    plt.plot(history.history['val_loss']);
     if capsnet:
         ax[1, 1].plot(history.history['loss']);
         ax[1, 1].plot(history.history['val_loss']);
@@ -305,8 +305,8 @@ def plot_history(history, model_name='model', capsnet=False):
         ax[1, 1].set_title(title)
         ax[1, 1].set_ylabel('loss');
         ax[1, 1].set_xlabel('epoch');
+        ax[1, 1].legend(['train', 'test'], loc='upper left');
     else:
-
         ax[1].plot(history.history['loss']);
         ax[1].plot(history.history['val_loss']);
         title = '{} loss'.format(model_name)
@@ -314,12 +314,6 @@ def plot_history(history, model_name='model', capsnet=False):
         ax[1].set_ylabel('loss');
         ax[1].set_xlabel('epoch');
         ax[1].legend(['train', 'test'], loc='upper left');
-        title = '{} combined loss'.format(model_name)
-    else:
-        title = '{} loss'.format(model_name)
-    plt.title(title);
-    plt.ylabel('loss');
-    plt.xlabel('epoch');
-    plt.legend(['train', 'test'], loc='upper left');
+    plt.tight_layout();
     plt.show();
     return
