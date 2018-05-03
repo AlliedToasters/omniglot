@@ -416,17 +416,17 @@ def quiz_models(directory, test, labels, visualize=False, capsnet=False, eval_mo
     print('\nquizzing best accuracy model...\n')
     if capsnet:
         eval_model.load_weights(model_directory + 'best_acc_caps.h5')
-        results1 = quiz(eval_model, test, labels, capsnet=True, visualize=visualize, train_df=train_df)
+        results1 = quiz(eval_model, test, labels, capsnet=True)
     else:
         best_acc = load_model(model_directory + 'best_acc.h5')
-        results1 = quiz(best_acc, test, labels, visualize=visualize, train_df=train_df)
+        results1 = quiz(best_acc, test, labels)
     print('\nquizzing best loss model...\n')
     if capsnet:
         eval_model.load_weights(model_directory + 'best_loss_caps.h5')
-        results2 = quiz(eval_model, test, labels, capsnet=True)
+        results2 = quiz(eval_model, test, labels, visualize=visualize, capsnet=True, train_df=train_df)
     else:
         best_loss = load_model(model_directory + 'best_loss.h5')
-        results2 = quiz(best_loss, test, labels)
+        results2 = quiz(best_loss, test, labels, visualize=visualize, train_df=train_df)
     print('\nquizzing overfit model...\n')
     if capsnet:
         eval_model.load_weights(model_directory + 'overfit_caps.h5')

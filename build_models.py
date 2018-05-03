@@ -38,7 +38,7 @@ class ProgressBar(Callback):
         self.n_epochs = n_epochs
     
     def on_epoch_end(self, epoch, logs={}):
-        update_progress(epoch/self.n_epochs)
+        update_progress((epoch+1)/self.n_epochs)
 
 class LossLoggerCNN(Callback):
     def __init__(self, logger):
